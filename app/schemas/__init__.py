@@ -2,22 +2,23 @@
 """
 Pydantic Schemas Package
 
-This package contains all Pydantic models used for request/response validation
-and serialization. Schemas define the structure of data exchanged with clients.
+Schemas define the shape of data exchanged at the API boundary.
 """
 
 from app.schemas.calculation import (
     CalculationType,
     CalculationBase,
     CalculationCreate,
+    CalculationRead,
+    CalculationResponse,  # alias for CalculationRead
     CalculationUpdate,
-    CalculationResponse
 )
 
 __all__ = [
     "CalculationType",
     "CalculationBase",
     "CalculationCreate",
+    "CalculationRead",
+    "CalculationResponse",
     "CalculationUpdate",
-    "CalculationResponse"
 ]

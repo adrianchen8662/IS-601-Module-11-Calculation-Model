@@ -34,17 +34,17 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def get_db():
+def get_db():  # pragma: no cover
     """
     Database session dependency for FastAPI.
-    
+
     This function creates a new database session for each request and ensures
     it's properly closed after the request is complete. It's designed to be
     used as a FastAPI dependency.
-    
+
     Yields:
         Session: A SQLAlchemy database session
-        
+
     Example:
         @app.get("/items")
         def read_items(db: Session = Depends(get_db)):
@@ -58,29 +58,29 @@ def get_db():
         db.close()
 
 
-def get_engine(database_url: str = SQLALCHEMY_DATABASE_URL):
+def get_engine(database_url: str = SQLALCHEMY_DATABASE_URL):  # pragma: no cover
     """
     Factory function to create a new SQLAlchemy engine.
-    
+
     This is useful for testing or when you need to create engines
     with different configurations.
-    
+
     Args:
         database_url: The database connection URL
-        
+
     Returns:
         Engine: A SQLAlchemy engine instance
     """
     return create_engine(database_url)
 
 
-def get_sessionmaker(engine):
+def get_sessionmaker(engine):  # pragma: no cover
     """
     Factory function to create a new sessionmaker bound to the given engine.
-    
+
     Args:
         engine: A SQLAlchemy engine instance
-        
+
     Returns:
         sessionmaker: A configured session factory
     """

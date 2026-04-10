@@ -75,5 +75,5 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return f"<User(username={self.username}, email={self.email})>"

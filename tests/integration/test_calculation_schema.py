@@ -11,17 +11,22 @@ Key Testing Concepts:
 2. Invalid Data: Ensure schemas reject incorrect data with clear messages
 3. Edge Cases: Test boundary conditions
 4. Business Rules: Verify domain-specific validation (e.g., no division by 0)
+
+Note: The schemas now use 'a' and 'b' float fields (two operands) instead
+of the previous 'inputs' list, matching the updated SQLAlchemy model.
 """
 
 import pytest
 from uuid import uuid4
+from datetime import datetime
 from pydantic import ValidationError
+
 from app.schemas.calculation import (
     CalculationType,
     CalculationBase,
     CalculationCreate,
+    CalculationRead,
     CalculationUpdate,
-    CalculationResponse
 )
 
 
@@ -29,8 +34,8 @@ from app.schemas.calculation import (
 # Tests for CalculationType Enum
 # ============================================================================
 
-def test_calculation_type_enum_values():
-    """Test that CalculationType enum has correct values."""
+def test_calculation_type_values():
+    """Test that CalculationType enum has the correct string values."""
     assert CalculationType.ADDITION.value == "addition"
     assert CalculationType.SUBTRACTION.value == "subtraction"
     assert CalculationType.MULTIPLICATION.value == "multiplication"
@@ -38,175 +43,216 @@ def test_calculation_type_enum_values():
 
 
 # ============================================================================
-# Tests for CalculationBase Schema
+# Tests for CalculationBase Schema – Valid Data
 # ============================================================================
 
 def test_calculation_base_valid_addition():
-    """Test CalculationBase with valid addition data."""
-    data = {
-        "type": "addition",
-        "inputs": [10.5, 3, 2]
-    }
+    """Test CalculationBase accepts valid addition data."""
+    data = {"type": "addition", "a": 10.5, "b": 3.0}
     calc = CalculationBase(**data)
     assert calc.type == CalculationType.ADDITION
-    assert calc.inputs == [10.5, 3, 2]
+    assert calc.a == 10.5
+    assert calc.b == 3.0
 
 
 def test_calculation_base_valid_subtraction():
-    """Test CalculationBase with valid subtraction data."""
-    data = {
-        "type": "subtraction",
-        "inputs": [20, 5.5]
-    }
+    """Test CalculationBase accepts valid subtraction data."""
+    data = {"type": "subtraction", "a": 20, "b": 5.5}
     calc = CalculationBase(**data)
     assert calc.type == CalculationType.SUBTRACTION
-    assert calc.inputs == [20, 5.5]
+
+
+def test_calculation_base_valid_multiplication():
+    """Test CalculationBase accepts valid multiplication data."""
+    data = {"type": "multiplication", "a": 4, "b": 7}
+    calc = CalculationBase(**data)
+    assert calc.type == CalculationType.MULTIPLICATION
+
+
+def test_calculation_base_valid_division():
+    """Test CalculationBase accepts valid division data (b != 0)."""
+    data = {"type": "division", "a": 100, "b": 4}
+    calc = CalculationBase(**data)
+    assert calc.type == CalculationType.DIVISION
 
 
 def test_calculation_base_case_insensitive_type():
     """Test that calculation type is case-insensitive."""
     for type_variant in ["Addition", "ADDITION", "AdDiTiOn"]:
-        data = {"type": type_variant, "inputs": [1, 2]}
+        data = {"type": type_variant, "a": 1, "b": 2}
         calc = CalculationBase(**data)
         assert calc.type == CalculationType.ADDITION
 
 
+# ============================================================================
+# Tests for CalculationBase Schema – Invalid Data
+# ============================================================================
+
 def test_calculation_base_invalid_type():
-    """Test that invalid calculation type raises ValidationError."""
-    data = {
-        "type": "modulus",  # Invalid type
-        "inputs": [10, 3]
-    }
+    """Test that an invalid calculation type raises ValidationError."""
+    data = {"type": "modulus", "a": 10, "b": 3}  # 'modulus' is not supported
     with pytest.raises(ValidationError) as exc_info:
         CalculationBase(**data)
-    
     errors = exc_info.value.errors()
     assert any("Type must be one of" in str(err) for err in errors)
-
-
-def test_calculation_base_inputs_not_list():
-    """Test that non-list inputs raise ValidationError."""
-    data = {
-        "type": "addition",
-        "inputs": "not a list"
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationBase(**data)
-    
-    errors = exc_info.value.errors()
-    assert any("Input should be a valid list" in str(err) for err in errors)
-
-
-def test_calculation_base_insufficient_inputs():
-    """Test that fewer than 2 inputs raises ValidationError."""
-    data = {
-        "type": "addition",
-        "inputs": [5]  # Only one input
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationBase(**data)
-    
-    # Validation error can be from min_length constraint or model validator
-    assert len(exc_info.value.errors()) > 0
-
-
-def test_calculation_base_empty_inputs():
-    """Test that empty inputs list raises ValidationError."""
-    data = {
-        "type": "multiplication",
-        "inputs": []
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationBase(**data)
-    
-    errors = exc_info.value.errors()
-    # Should fail on min_length=2
-    assert len(errors) > 0
 
 
 def test_calculation_base_division_by_zero():
     """
     Test that division by zero is caught by schema validation.
-    
+
     This demonstrates LBYL (Look Before You Leap): We check for the error
     condition before attempting the operation. This is appropriate at the
     API boundary to provide immediate feedback to the client.
     """
-    data = {
-        "type": "division",
-        "inputs": [100, 0]  # Division by zero
-    }
+    data = {"type": "division", "a": 100, "b": 0}  # b == 0 → invalid
     with pytest.raises(ValidationError) as exc_info:
         CalculationBase(**data)
-    
-    errors = exc_info.value.errors()
-    assert any("Cannot divide by zero" in str(err) for err in errors)
-
-
-def test_calculation_base_division_by_zero_in_middle():
-    """Test that zero in any denominator position is caught."""
-    data = {
-        "type": "division",
-        "inputs": [100, 5, 0, 2]  # Zero in middle
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationBase(**data)
-    
     errors = exc_info.value.errors()
     assert any("Cannot divide by zero" in str(err) for err in errors)
 
 
 def test_calculation_base_division_zero_numerator_ok():
-    """Test that zero as the first input (numerator) is allowed."""
-    data = {
-        "type": "division",
-        "inputs": [0, 5, 2]  # Zero numerator is valid
-    }
+    """Test that a=0 (zero numerator) is valid as long as b != 0."""
+    data = {"type": "division", "a": 0, "b": 5}  # 0 / 5 = 0 – perfectly valid
     calc = CalculationBase(**data)
-    assert calc.inputs[0] == 0
+    assert calc.a == 0
+
+
+def test_calculation_base_missing_a():
+    """Test that omitting 'a' raises ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationBase(type="addition", b=2)
+    assert any("a" in str(err) for err in exc_info.value.errors())
+
+
+def test_calculation_base_missing_b():
+    """Test that omitting 'b' raises ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationBase(type="addition", a=1)
+    assert any("b" in str(err) for err in exc_info.value.errors())
+
+
+def test_calculation_base_negative_numbers():
+    """Test that negative operands are accepted."""
+    data = {"type": "addition", "a": -5, "b": -10}
+    calc = CalculationBase(**data)
+    assert calc.a == -5
+    assert calc.b == -10
+
+
+def test_calculation_base_large_numbers():
+    """Test that very large floats are handled correctly."""
+    data = {"type": "multiplication", "a": 1e10, "b": 1e10}
+    calc = CalculationBase(**data)
+    assert isinstance(calc.a, float)
 
 
 # ============================================================================
 # Tests for CalculationCreate Schema
 # ============================================================================
 
-def test_calculation_create_valid():
-    """Test CalculationCreate with valid data."""
-    user_id = uuid4()
+def test_calculation_create_valid_with_user_id():
+    """Test CalculationCreate with all fields including user_id."""
+    uid = uuid4()
     data = {
         "type": "multiplication",
-        "inputs": [2, 3, 4],
-        "user_id": str(user_id)
+        "a": 2,
+        "b": 3,
+        "user_id": str(uid),
     }
     calc = CalculationCreate(**data)
     assert calc.type == CalculationType.MULTIPLICATION
-    assert calc.inputs == [2, 3, 4]
-    assert calc.user_id == user_id
+    assert calc.a == 2
+    assert calc.b == 3
+    assert calc.user_id == uid
 
 
-def test_calculation_create_missing_user_id():
-    """Test that CalculationCreate requires user_id."""
-    data = {
-        "type": "addition",
-        "inputs": [1, 2]
-        # Missing user_id
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationCreate(**data)
-    
-    errors = exc_info.value.errors()
-    assert any("user_id" in str(err) for err in errors)
+def test_calculation_create_valid_without_user_id():
+    """Test CalculationCreate without user_id (it is optional)."""
+    calc = CalculationCreate(type="addition", a=1, b=2)
+    assert calc.user_id is None
 
 
 def test_calculation_create_invalid_user_id():
-    """Test that invalid UUID format raises ValidationError."""
-    data = {
-        "type": "subtraction",
-        "inputs": [10, 5],
-        "user_id": "not-a-valid-uuid"
-    }
+    """Test that an invalid UUID string raises ValidationError."""
+    data = {"type": "subtraction", "a": 10, "b": 5, "user_id": "not-a-uuid"}
     with pytest.raises(ValidationError):
         CalculationCreate(**data)
+
+
+def test_calculation_create_missing_type():
+    """Test that omitting type raises ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationCreate(a=1, b=2)
+    assert any("type" in str(err) for err in exc_info.value.errors())
+
+
+def test_calculation_create_missing_a():
+    """Test that omitting 'a' raises ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationCreate(type="addition", b=2)
+    assert any("a" in str(err) for err in exc_info.value.errors())
+
+
+def test_calculation_create_missing_b():
+    """Test that omitting 'b' raises ValidationError."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationCreate(type="addition", a=1)
+    assert any("b" in str(err) for err in exc_info.value.errors())
+
+
+# ============================================================================
+# Tests for CalculationRead Schema
+# ============================================================================
+
+def test_calculation_read_valid():
+    """Test CalculationRead with all required fields."""
+    data = {
+        "id": str(uuid4()),
+        "user_id": str(uuid4()),
+        "type": "addition",
+        "a": 10.0,
+        "b": 5.0,
+        "result": 15.0,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    calc = CalculationRead(**data)
+    assert calc.result == 15.0
+    assert calc.type == CalculationType.ADDITION
+
+
+def test_calculation_read_missing_result():
+    """Test that CalculationRead requires the result field."""
+    with pytest.raises(ValidationError) as exc_info:
+        CalculationRead(
+            id=str(uuid4()),
+            type="multiplication",
+            a=2,
+            b=3,
+            # 'result' deliberately omitted
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+    errors = exc_info.value.errors()
+    assert any("result" in str(err) for err in errors)
+
+
+def test_calculation_read_without_user_id():
+    """Test that user_id is optional in CalculationRead."""
+    calc = CalculationRead(
+        id=str(uuid4()),
+        user_id=None,
+        type="multiplication",
+        a=3,
+        b=4,
+        result=12.0,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    assert calc.user_id is None
+    assert calc.result == 12.0
 
 
 # ============================================================================
@@ -214,96 +260,44 @@ def test_calculation_create_invalid_user_id():
 # ============================================================================
 
 def test_calculation_update_valid():
-    """Test CalculationUpdate with valid data."""
-    data = {
-        "inputs": [42, 7]
-    }
-    calc = CalculationUpdate(**data)
-    assert calc.inputs == [42, 7]
+    """Test CalculationUpdate with both a and b provided."""
+    upd = CalculationUpdate(a=42.0, b=7.0)
+    assert upd.a == 42.0
+    assert upd.b == 7.0
 
 
 def test_calculation_update_all_fields_optional():
-    """Test that CalculationUpdate can be empty (all fields optional)."""
-    data = {}
-    calc = CalculationUpdate(**data)
-    assert calc.inputs is None
+    """Test that CalculationUpdate can be created with no fields (partial update)."""
+    upd = CalculationUpdate()
+    assert upd.a is None
+    assert upd.b is None
 
 
-def test_calculation_update_insufficient_inputs():
-    """Test that CalculationUpdate validates minimum inputs."""
-    data = {
-        "inputs": [5]  # Only one input
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationUpdate(**data)
-    
-    # Validation error can be from min_length constraint or model validator
-    assert len(exc_info.value.errors()) > 0
+def test_calculation_update_only_a():
+    """Test partial update where only 'a' is changed."""
+    upd = CalculationUpdate(a=99.0)
+    assert upd.a == 99.0
+    assert upd.b is None
 
 
 # ============================================================================
-# Tests for CalculationResponse Schema
-# ============================================================================
-
-def test_calculation_response_valid():
-    """Test CalculationResponse with all required fields."""
-    from datetime import datetime
-    
-    data = {
-        "id": str(uuid4()),
-        "user_id": str(uuid4()),
-        "type": "addition",
-        "inputs": [10, 5],
-        "result": 15.0,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
-    calc = CalculationResponse(**data)
-    assert calc.result == 15.0
-    assert calc.type == CalculationType.ADDITION
-
-
-def test_calculation_response_missing_result():
-    """Test that CalculationResponse requires result field."""
-    from datetime import datetime
-    
-    data = {
-        "id": str(uuid4()),
-        "user_id": str(uuid4()),
-        "type": "multiplication",
-        "inputs": [2, 3],
-        # Missing result
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        CalculationResponse(**data)
-    
-    errors = exc_info.value.errors()
-    assert any("result" in str(err) for err in errors)
-
-
-# ============================================================================
-# Tests for Complex Validation Scenarios
+# Tests for Complex / Multi-type Scenarios
 # ============================================================================
 
 def test_multiple_calculations_with_different_types():
     """
     Test that schemas correctly validate multiple calculations of
-    different types.
+    different types in a batch.
     """
-    user_id = uuid4()
-    
+    uid = uuid4()
     calcs_data = [
-        {"type": "addition", "inputs": [1, 2, 3], "user_id": str(user_id)},
-        {"type": "subtraction", "inputs": [10, 3], "user_id": str(user_id)},
-        {"type": "multiplication", "inputs": [2, 3, 4],
-         "user_id": str(user_id)},
-        {"type": "division", "inputs": [100, 5], "user_id": str(user_id)},
+        {"type": "addition", "a": 1, "b": 2, "user_id": str(uid)},
+        {"type": "subtraction", "a": 10, "b": 3, "user_id": str(uid)},
+        {"type": "multiplication", "a": 2, "b": 4, "user_id": str(uid)},
+        {"type": "division", "a": 100, "b": 5, "user_id": str(uid)},
     ]
-    
-    calcs = [CalculationCreate(**data) for data in calcs_data]
-    
+    calcs = [CalculationCreate(**d) for d in calcs_data]
+
     assert len(calcs) == 4
     assert calcs[0].type == CalculationType.ADDITION
     assert calcs[1].type == CalculationType.SUBTRACTION
@@ -311,31 +305,10 @@ def test_multiple_calculations_with_different_types():
     assert calcs[3].type == CalculationType.DIVISION
 
 
-def test_schema_with_large_numbers():
-    """Test that schemas handle large numbers correctly."""
-    data = {
-        "type": "multiplication",
-        "inputs": [1e10, 1e10, 1e10]
-    }
-    calc = CalculationBase(**data)
-    assert all(isinstance(x, float) for x in calc.inputs)
-
-
-def test_schema_with_negative_numbers():
-    """Test that schemas accept negative numbers."""
-    data = {
-        "type": "addition",
-        "inputs": [-5, -10, 3.5]
-    }
-    calc = CalculationBase(**data)
-    assert calc.inputs == [-5, -10, 3.5]
-
-
 def test_schema_with_mixed_int_and_float():
-    """Test that schemas accept mixed integers and floats."""
-    data = {
-        "type": "subtraction",
-        "inputs": [100, 23.5, 10, 6.7]
-    }
+    """Test that schemas correctly handle both int and float operands."""
+    data = {"type": "subtraction", "a": 100, "b": 23.5}
     calc = CalculationBase(**data)
-    assert len(calc.inputs) == 4
+    # Pydantic coerces int to float for float-typed fields
+    assert calc.a == 100.0
+    assert calc.b == 23.5
