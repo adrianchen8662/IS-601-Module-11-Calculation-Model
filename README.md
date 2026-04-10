@@ -1,3 +1,11 @@
+This repository uses [https://github.com/kaw393939/module11_is601](https://github.com/kaw393939/module11_is601) as its starting point. 
+
+The Dockerhub repository is located at [https://hub.docker.com/repository/docker/adrianchen8662/is-601-module-11-calculation-model](https://hub.docker.com/repository/docker/adrianchen8662/is-601-module-11-calculation-model)
+
+Screenshots:
+![Successful Github Actions Run](screenshots/successful_run.png)
+![Successful Upload to Dockerhub](screenshots/upload_to_dockerhub.png)
+
 # 📦 Project Setup
 
 ---
